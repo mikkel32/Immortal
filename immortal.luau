@@ -386,6 +386,21 @@ local Instance = Instance_ref or (_global and rawget(_global, "Instance"))
 local task = task_ref or (_global and rawget(_global, "task"))
 local time = time_ref or (_global and rawget(_global, "time")) or os.clock
 
+local function spawnTask(callback: () -> ())
+        if type(callback) ~= "function" then
+                return
+        end
+        if task and task.spawn then
+                task.spawn(callback)
+                return
+        end
+        local thread = coroutine.create(callback)
+        local ok, err = coroutine.resume(thread)
+        if not ok then
+                error(err)
+        end
+end
+
 local Players               = game:GetService("Players")
 local RunService            = game:GetService("RunService")
 local Workspace             = game:GetService("Workspace")
@@ -553,13 +568,18 @@ function Immortal.new(options: Options?)
 	self._statsDataPingItem=nil
 
 	-- UI
-	self._autoUI = (options.autoUI ~= false)
-	self._toggleKey = options.toggleKey or DEFAULT_TOGGLE_KEY
-	self._showStats = options.showStats == true
-	self._uiEnsureConn=nil
-	self._ui=nil :: ScreenGui?; self._uiPanel=nil :: Frame?
-	self._uiButton=nil :: TextButton?; self._uiTrace=nil :: TextButton?; self._uiPing=nil :: TextButton?; self._uiLamp=nil :: Frame?
-	self._uiLabel=nil :: TextLabel?; self._onlineToast=nil :: TextLabel?
+        self._autoUI = (options.autoUI ~= false)
+        self._toggleKey = options.toggleKey or DEFAULT_TOGGLE_KEY
+        self._showStats = options.showStats == true
+        self._uiEnsureConn=nil
+        self._ui=nil :: ScreenGui?; self._uiPanel=nil :: Frame?
+        self._uiButton=nil :: TextButton?; self._uiTrace=nil :: TextButton?; self._uiPing=nil :: TextButton?; self._uiLamp=nil :: Frame?
+        self._uiLabel=nil :: TextLabel?; self._onlineToast=nil :: TextLabel?
+        self._uiEnsureScheduled=false
+        self._playerAddedConn=nil :: RBXScriptConnection?
+        self._playerGuiSignalConn=nil :: RBXScriptConnection?
+        self._playerGuiAncestryConn=nil :: RBXScriptConnection?
+        self._observedPlayerGui=nil :: PlayerGui?
 
 	-- highlight
 	self._highlight=nil :: Highlight?; self._highlightTarget=nil
@@ -580,9 +600,10 @@ function Immortal.new(options: Options?)
 	self._ballConnAdded=nil; self._ballConnRemoved=nil; self:_hookBallsFolder(self._ballsFolder)
 
 	-- UI / input
-	if self._autoUI and RunService:IsClient() then
-		self:_ensureUIEventually()
-		self:_bindToggleAction()
+        if self._autoUI and RunService:IsClient() then
+                self:_observePlayerGui()
+                self:_ensureUIEventually()
+                self:_bindToggleAction()
 	elseif not RunService:IsClient() then
 		warn("[IMMORTAL] You called Immortal.new() from the server. UI will not appear. Use a LocalScript in StarterPlayerScripts.")
 	end
@@ -625,6 +646,95 @@ end
 
 function Immortal:_clearUIHandles()
         self._ui=nil; self._uiPanel=nil; self._uiButton=nil; self._uiTrace=nil; self._uiPing=nil; self._uiLamp=nil; self._uiLabel=nil; self._onlineToast=nil
+end
+
+function Immortal:_scheduleEnsureUI()
+        if not (self._autoUI and RunService:IsClient()) then return end
+        if self._uiEnsureScheduled then return end
+        self._uiEnsureScheduled=true
+        spawnTask(function()
+                self._uiEnsureScheduled=false
+                if self._autoUI and RunService:IsClient() then
+                        self:_ensureUIEventually()
+                end
+        end)
+end
+
+function Immortal:_trackActivePlayerGui(player: Player?)
+        if not RunService:IsClient() then return end
+        if self._playerGuiAncestryConn then
+                self._playerGuiAncestryConn:Disconnect()
+                self._playerGuiAncestryConn=nil
+        end
+
+        local pg: PlayerGui? = nil
+        if player then
+                local okProp, value = pcall(function()
+                        return player.PlayerGui
+                end)
+                if okProp and value then
+                        pg = value
+                elseif player.FindFirstChildOfClass then
+                        pg = player:FindFirstChildOfClass("PlayerGui")
+                end
+        end
+
+        if self._observedPlayerGui == pg then
+                return
+        end
+
+        self._observedPlayerGui = pg
+
+        if pg and pg.AncestryChanged then
+                self._playerGuiAncestryConn = pg.AncestryChanged:Connect(function(_, parent)
+                        if self._observedPlayerGui ~= pg then
+                                return
+                        end
+                        if not parent then
+                                self._observedPlayerGui=nil
+                        end
+                        self:_scheduleEnsureUI()
+                end)
+        end
+
+        self:_scheduleEnsureUI()
+end
+
+function Immortal:_attachPlayerGuiSignals(player: Player?)
+        if not RunService:IsClient() then return end
+        if not player then return end
+
+        if not self._playerGuiSignalConn and player.GetPropertyChangedSignal then
+                local okSignal, signal = pcall(player.GetPropertyChangedSignal, player, "PlayerGui")
+                if okSignal and signal and signal.Connect then
+                        self._playerGuiSignalConn = signal:Connect(function()
+                                self:_trackActivePlayerGui(player)
+                                self:_scheduleEnsureUI()
+                        end)
+                end
+        end
+
+        self:_trackActivePlayerGui(player)
+end
+
+function Immortal:_observePlayerGui()
+        if not RunService:IsClient() then return end
+
+        if not self._playerAddedConn and Players and Players.PlayerAdded then
+                self._playerAddedConn = Players.PlayerAdded:Connect(function(player)
+                        if not player then return end
+                        local localPlayer = Players.LocalPlayer
+                        if localPlayer and player ~= localPlayer then return end
+                        self._player = self._player or player
+                        self:_attachPlayerGuiSignals(player)
+                        self:_scheduleEnsureUI()
+                end)
+        end
+
+        local player = self:_resolveLocalPlayer(0)
+        if player then
+                        self:_attachPlayerGuiSignals(player)
+        end
 end
 
 function Immortal:_resolveLocalPlayer(timeout:number?): Player?
@@ -793,6 +903,7 @@ end
 
 function Immortal:_ensureUIEventually()
         if not RunService:IsClient() then return end
+        self:_observePlayerGui()
 
         if self._ui and isInstanceDestroyed(self._ui) then
                 self:_clearUIHandles()
@@ -1217,6 +1328,11 @@ function Immortal:destroy()
         if self._uiEnsureConn then self._uiEnsureConn:Disconnect() self._uiEnsureConn=nil end
         if self._ui and not isInstanceDestroyed(self._ui) then self._ui:Destroy() end
         self:_clearUIHandles()
+        if self._playerAddedConn then self._playerAddedConn:Disconnect() self._playerAddedConn=nil end
+        if self._playerGuiSignalConn then self._playerGuiSignalConn:Disconnect() self._playerGuiSignalConn=nil end
+        if self._playerGuiAncestryConn then self._playerGuiAncestryConn:Disconnect() self._playerGuiAncestryConn=nil end
+        self._observedPlayerGui=nil
+        self._uiEnsureScheduled=false
         ContextActionService:UnbindAction(UI_ACTION_NAME)
         if self._highlight then self._highlight:Destroy(); self._highlight=nil; self._highlightTarget=nil end
         if self._ballConnAdded then self._ballConnAdded:Disconnect() self._ballConnAdded=nil end

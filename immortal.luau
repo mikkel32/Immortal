@@ -7,6 +7,327 @@
 
 print("[IMMORTAL] module loaded (UI-hardened, Safe Ping Provider)")
 
+local _global = _G :: any
+local _shared = (_global and rawget(_global, "shared")) :: any
+local game = (_global and rawget(_global, "game")) or (_shared and rawget(_shared, "game"))
+
+if not game then
+        local function makeSignal()
+                local signal = { _connections = {} }
+                function signal:Connect(callback)
+                        table.insert(self._connections, callback)
+                        return {
+                                Disconnect = function()
+                                        for i, fn in ipairs(signal._connections) do
+                                                if fn == callback then
+                                                        table.remove(signal._connections, i)
+                                                        break
+                                                end
+                                        end
+                                end,
+                        }
+                end
+                function signal:Fire(...)
+                        for _, fn in ipairs(self._connections) do
+                                fn(...)
+                        end
+                end
+                return signal
+        end
+
+        local function createConsoleStub(): any
+                if not table.create then
+                        function table.create(n, value)
+                                local t = {}
+                                for i = 1, n do
+                                        t[i] = value
+                                end
+                                return t
+                        end
+                end
+
+                if not math.clamp then
+                        function math.clamp(x, minValue, maxValue)
+                                if x < minValue then
+                                        return minValue
+                                elseif x > maxValue then
+                                        return maxValue
+                                end
+                                return x
+                        end
+                end
+
+                if not math.sign then
+                        function math.sign(x)
+                                if x > 0 then
+                                        return 1
+                                elseif x < 0 then
+                                        return -1
+                                end
+                                return 0
+                        end
+                end
+
+                local Vector3Methods = {}
+                function Vector3Methods.Magnitude(self)
+                        return math.sqrt(self.X * self.X + self.Y * self.Y + self.Z * self.Z)
+                end
+                function Vector3Methods.Unit(self)
+                        local mag = Vector3Methods.Magnitude(self)
+                        if mag < 1e-6 then
+                                return Vector3.zero
+                        end
+                        return Vector3.new(self.X / mag, self.Y / mag, self.Z / mag)
+                end
+                function Vector3Methods.Dot(self, other)
+                        return self.X * other.X + self.Y * other.Y + self.Z * other.Z
+                end
+                function Vector3Methods.Cross(self, other)
+                        return Vector3.new(
+                                self.Y * other.Z - self.Z * other.Y,
+                                self.Z * other.X - self.X * other.Z,
+                                self.X * other.Y - self.Y * other.X
+                        )
+                end
+
+                local Vector3_mt = {}
+                Vector3_mt.__index = function(self, key)
+                        if key == "Magnitude" then
+                                return Vector3Methods.Magnitude(self)
+                        elseif key == "Unit" then
+                                return Vector3Methods.Unit(self)
+                        else
+                                return Vector3Methods[key]
+                        end
+                end
+                Vector3_mt.__add = function(a, b)
+                        return Vector3.new(a.X + b.X, a.Y + b.Y, a.Z + b.Z)
+                end
+                Vector3_mt.__sub = function(a, b)
+                        return Vector3.new(a.X - b.X, a.Y - b.Y, a.Z - b.Z)
+                end
+                Vector3_mt.__unm = function(a)
+                        return Vector3.new(-a.X, -a.Y, -a.Z)
+                end
+                Vector3_mt.__mul = function(a, b)
+                        if type(a) == "number" then
+                                return Vector3.new(a * b.X, a * b.Y, a * b.Z)
+                        elseif type(b) == "number" then
+                                return Vector3.new(a.X * b, a.Y * b, a.Z * b)
+                        else
+                                error("Vector3 multiplication supports scalar operands only in console mode")
+                        end
+                end
+                Vector3_mt.__div = function(a, b)
+                        return Vector3.new(a.X / b, a.Y / b, a.Z / b)
+                end
+                Vector3_mt.__eq = function(a, b)
+                        return math.abs(a.X - b.X) < 1e-6 and math.abs(a.Y - b.Y) < 1e-6 and math.abs(a.Z - b.Z) < 1e-6
+                end
+
+                Vector3 = Vector3 or {}
+                function Vector3.new(x, y, z)
+                        return setmetatable({ X = x or 0, Y = y or 0, Z = z or 0 }, Vector3_mt)
+                end
+                Vector3.zero = Vector3.new(0, 0, 0)
+
+                CFrame = CFrame or {}
+                local CFrame_mt = { __index = {} }
+                function CFrame.new(x, y, z)
+                        if type(x) == "table" then
+                                local v = x
+                                return setmetatable({ Position = Vector3.new(v.X, v.Y, v.Z) }, CFrame_mt)
+                        end
+                        return setmetatable({ Position = Vector3.new(x or 0, y or 0, z or 0) }, CFrame_mt)
+                end
+                setmetatable(CFrame, { __call = function(_, ...) return CFrame.new(...) end })
+
+                Enum = Enum or {}
+                Enum.KeyCode = Enum.KeyCode or { G = "G" }
+                Enum.ZIndexBehavior = Enum.ZIndexBehavior or { Sibling = "Sibling" }
+                Enum.UserInputState = Enum.UserInputState or { Begin = "Begin" }
+                Enum.ContextActionResult = Enum.ContextActionResult or { Pass = "Pass", Sink = "Sink" }
+                Enum.Font = Enum.Font or { GothamBold = "GothamBold", Gotham = "Gotham" }
+                Enum.RaycastFilterType = Enum.RaycastFilterType or { Exclude = "Exclude" }
+
+                Color3 = Color3 or {}
+                function Color3.fromRGB(r, g, b)
+                        return { R = r, G = g, B = b }
+                end
+
+                Vector2 = Vector2 or {}
+                function Vector2.new(x, y)
+                        return { X = x, Y = y }
+                end
+
+                UDim = UDim or {}
+                function UDim.new(scale, offset)
+                        return { Scale = scale, Offset = offset }
+                end
+
+                UDim2 = UDim2 or {}
+                function UDim2.new(xScale, xOffset, yScale, yOffset)
+                        return {
+                                X = UDim.new(xScale, xOffset),
+                                Y = UDim.new(yScale, yOffset),
+                        }
+                end
+
+                local RunService = {
+                        _isClient = true,
+                }
+                RunService.Heartbeat = makeSignal()
+                function RunService:IsClient()
+                        return self._isClient
+                end
+
+                local ContextActionService = {}
+                function ContextActionService:BindAction(name, callback)
+                        self._bound = self._bound or {}
+                        self._bound[name] = callback
+                end
+                function ContextActionService:UnbindAction(name)
+                        if self._bound then
+                                self._bound[name] = nil
+                        end
+                end
+
+                local UserInputService = {}
+                function UserInputService:GetFocusedTextBox()
+                        return nil
+                end
+
+                local Workspace = {}
+                function Workspace:GetPartBoundsInBox()
+                        return {}
+                end
+
+                local StarterGui = {}
+                local Players = { LocalPlayer = nil }
+
+                local Stats = {}
+                function Stats:GetTotalMemoryUsageMb()
+                        return 0
+                end
+
+                local Random_mt = {}
+                Random_mt.__index = Random_mt
+                function Random_mt:NextNumber(minValue, maxValue)
+                        minValue = minValue or 0
+                        maxValue = maxValue or 1
+                        return minValue + (maxValue - minValue) * math.random()
+                end
+                function Random_mt:NextInteger(minValue, maxValue)
+                        return math.random(minValue, maxValue)
+                end
+
+                Random = Random or {}
+                function Random.new(seed)
+                        if seed then
+                                math.randomseed(seed)
+                        end
+                        return setmetatable({}, Random_mt)
+                end
+
+                OverlapParams = OverlapParams or {}
+                function OverlapParams.new()
+                        return {
+                                FilterType = nil,
+                                MaxParts = nil,
+                                FilterDescendantsInstances = {},
+                        }
+                end
+
+                local function makeInstance(className)
+                        local instance = {
+                                ClassName = className,
+                                Name = className,
+                                Parent = nil,
+                        }
+                        function instance:IsA(target)
+                                return target == className
+                        end
+                        function instance:FindFirstChild()
+                                return nil
+                        end
+                        function instance:FindFirstChildOfClass()
+                                return nil
+                        end
+                        function instance:Destroy()
+                                self.Parent = nil
+                        end
+                        return instance
+                end
+
+                Instance = Instance or {}
+                function Instance.new(className)
+                        return makeInstance(className)
+                end
+
+                local services = {
+                        Players = Players,
+                        RunService = RunService,
+                        Workspace = Workspace,
+                        ContextActionService = ContextActionService,
+                        UserInputService = UserInputService,
+                        StarterGui = StarterGui,
+                        Stats = Stats,
+                }
+
+                local gameStub = {}
+                function gameStub:GetService(name)
+                        return services[name]
+                end
+
+                local taskStub = task or {
+                        wait = function(seconds)
+                                return seconds or 0
+                        end,
+                        delay = function(_, callback)
+                                if type(callback) == "function" then
+                                        callback()
+                                end
+                        end,
+                        spawn = function(callback)
+                                if type(callback) == "function" then
+                                        callback()
+                                end
+                        end,
+                }
+
+                return {
+                        game = gameStub,
+                        Vector3 = Vector3,
+                        CFrame = CFrame,
+                        Enum = Enum,
+                        Color3 = Color3,
+                        Vector2 = Vector2,
+                        UDim = UDim,
+                        UDim2 = UDim2,
+                        Random = Random,
+                        OverlapParams = OverlapParams,
+                        Instance = Instance,
+                        task = taskStub,
+                        time = time or os.clock,
+                }
+        end
+
+        local consoleStub = createConsoleStub()
+        game = consoleStub.game
+        Vector3 = consoleStub.Vector3
+        CFrame = consoleStub.CFrame
+        Enum = consoleStub.Enum
+        Color3 = consoleStub.Color3
+        Vector2 = consoleStub.Vector2
+        UDim = consoleStub.UDim
+        UDim2 = consoleStub.UDim2
+        Random = consoleStub.Random
+        OverlapParams = consoleStub.OverlapParams
+        Instance = consoleStub.Instance
+        task = task or consoleStub.task
+        time = time or consoleStub.time
+end
+
 local Players               = game:GetService("Players")
 local RunService            = game:GetService("RunService")
 local Workspace             = game:GetService("Workspace")

@@ -1,26 +1,4 @@
 --!strict
--- Wrapper that prefers the reorganised analyzer under tools/ but keeps a
--- built-in fallback for environments that cannot access the filesystem.
-
-local function tryRunFromTools(...: any)
-        if not loadfile then
-                return false, "loadfile is unavailable"
-        end
-        local chunk, err = loadfile("tools/immortal_error_analyzer.luau")
-        if not chunk then
-                return false, err
-        end
-        chunk(...)
-        return true
-end
-
-local ok, reason = tryRunFromTools(...)
-if ok then
-        return
-end
-
-local embeddedSource = [=[
---!strict
 --[[
         Immortal Error Analyzer
 
@@ -48,13 +26,13 @@ local embeddedSource = [=[
 local fmt = string.format
 
 package = package or {}
-package.path = (package.path or "") .. ";./?.luau;../?.luau"
+package.path = (package.path or "") .. ";./?.luau"
 
 local args = { ... }
 local outputMode = "pretty"
 local skipLoader = false
-local modulePath = "../immortal.luau"
-local loaderPath = "../loader.luau"
+local modulePath = "immortal.luau"
+local loaderPath = "loader.luau"
 local moduleUrl = "immortal://local"
 
 for _, arg in ipairs(args) do
@@ -241,8 +219,8 @@ local function withGameStub(stub: any, callback: () -> any)
 end
 
 -- Stage 1: require the module
-local ImmortalModuleEntry = record("require ../immortal", function()
-        return require("../immortal")
+local ImmortalModuleEntry = record("require ./immortal", function()
+        return require("./immortal")
 end, function(moduleTable)
         local valueType = typeof and typeof(moduleTable) or type(moduleTable)
         local hasNew = (type(moduleTable) == "table" and type(moduleTable.new) == "function")
@@ -531,16 +509,3 @@ if outputMode == "json" then
 else
         printPretty()
 end
-]=]
-
-local compiler = load or loadstring
-if not compiler then
-        error(string.format("Failed to run Immortal error analyzer: %s", tostring(reason)))
-end
-
-local chunk, compileErr = compiler(embeddedSource, "@tools/immortal_error_analyzer.luau")
-if not chunk then
-        error(compileErr)
-end
-
-chunk(...)

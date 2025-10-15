@@ -1,26 +1,4 @@
 --!strict
--- Wrapper that prefers the reorganised analyzer under tools/ but keeps a
--- built-in fallback for environments that cannot access the filesystem.
-
-local function tryRunFromTools(...: any)
-        if not loadfile then
-                return false, "loadfile is unavailable"
-        end
-        local chunk, err = loadfile("tools/immortal_error_analyzer.luau")
-        if not chunk then
-                return false, err
-        end
-        chunk(...)
-        return true
-end
-
-local ok, reason = tryRunFromTools(...)
-if ok then
-        return
-end
-
-local embeddedSource = [=[
---!strict
 --[[
         Immortal Error Analyzer
 
@@ -531,16 +509,3 @@ if outputMode == "json" then
 else
         printPretty()
 end
-]=]
-
-local compiler = load or loadstring
-if not compiler then
-        error(string.format("Failed to run Immortal error analyzer: %s", tostring(reason)))
-end
-
-local chunk, compileErr = compiler(embeddedSource, "@tools/immortal_error_analyzer.luau")
-if not chunk then
-        error(compileErr)
-end
-
-chunk(...)

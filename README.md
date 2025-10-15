@@ -20,8 +20,13 @@ invoking the wrapper (for example `IMMORTAL_LUAU_VERSION=0.695 ./scripts/luau`).
 Execute the bundled Luau script:
 
 ```bash
-./scripts/luau run_immortal.luau
+./scripts/luau examples/run_console.luau
 ```
+
+The legacy `run_immortal.luau` entrypoint remains available for backwards
+compatibility and internally reuses the example implementation. Invoking the
+example directly keeps the repository layout tidy and mirrors the structure
+described below.
 
 The Immortal module automatically provisions console-safe stubs for Roblox
 services whenever it detects that the real runtime is unavailable. The runner
@@ -72,3 +77,19 @@ local immortal = loadstring(game:HttpGet("https://raw.githubusercontent.com/mikk
 Additional loader options allow you to override the branch, provide a custom
 raw file URL, disable auto-enable, or pass through any `Immortal.new`
 configuration in `immortalConfig`.
+
+## Repository structure
+
+```
+├── examples/              # Console runner and future illustrative scripts
+├── scripts/               # Tooling wrappers (Luau CLI installer, utilities)
+├── tools/                 # Diagnostics and development-time helpers
+├── immortal.luau          # Hardened Immortal module (HTTP loader target)
+├── loader.luau            # Roblox HTTP bootstrapper for the module
+└── README.md              # Project overview and usage instructions
+```
+
+Development-specific helpers live under `tools/`, while standalone scripts that
+exercise the module in a sandboxed environment live under `examples/`. This
+layout keeps the production artefacts (`immortal.luau` and `loader.luau`)
+obvious at the repository root while grouping supportive assets by purpose.

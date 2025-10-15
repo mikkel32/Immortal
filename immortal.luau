@@ -11,6 +11,19 @@ local _global = _G :: any
 local _shared = (_global and rawget(_global, "shared")) :: any
 local game = (_global and rawget(_global, "game")) or (_shared and rawget(_shared, "game"))
 
+local Vector3_ref = Vector3
+local CFrame_ref = CFrame
+local Enum_ref = Enum
+local Color3_ref = Color3
+local Vector2_ref = Vector2
+local UDim_ref = UDim
+local UDim2_ref = UDim2
+local Random_ref = Random
+local OverlapParams_ref = OverlapParams
+local Instance_ref = Instance
+local task_ref = task
+local time_ref = time
+
 if not game then
         local function makeSignal()
                 local signal = { _connections = {} }
@@ -68,110 +81,137 @@ if not game then
                         end
                 end
 
+        local function makeVector3Library()
                 local Vector3Methods = {}
+                local Vector3_mt = {}
+                local Vector3Library -- forward declaration
+
                 function Vector3Methods.Magnitude(self)
                         return math.sqrt(self.X * self.X + self.Y * self.Y + self.Z * self.Z)
                 end
+
                 function Vector3Methods.Unit(self)
                         local mag = Vector3Methods.Magnitude(self)
                         if mag < 1e-6 then
-                                return Vector3.zero
+                                return Vector3Library.zero
                         end
-                        return Vector3.new(self.X / mag, self.Y / mag, self.Z / mag)
+                        return Vector3Library.new(self.X / mag, self.Y / mag, self.Z / mag)
                 end
+
                 function Vector3Methods.Dot(self, other)
                         return self.X * other.X + self.Y * other.Y + self.Z * other.Z
                 end
+
                 function Vector3Methods.Cross(self, other)
-                        return Vector3.new(
+                        return Vector3Library.new(
                                 self.Y * other.Z - self.Z * other.Y,
                                 self.Z * other.X - self.X * other.Z,
                                 self.X * other.Y - self.Y * other.X
                         )
                 end
 
-                local Vector3_mt = {}
                 Vector3_mt.__index = function(self, key)
                         if key == "Magnitude" then
                                 return Vector3Methods.Magnitude(self)
                         elseif key == "Unit" then
                                 return Vector3Methods.Unit(self)
-                        else
-                                return Vector3Methods[key]
                         end
+                        return Vector3Methods[key]
                 end
+
                 Vector3_mt.__add = function(a, b)
-                        return Vector3.new(a.X + b.X, a.Y + b.Y, a.Z + b.Z)
+                        return Vector3Library.new(a.X + b.X, a.Y + b.Y, a.Z + b.Z)
                 end
+
                 Vector3_mt.__sub = function(a, b)
-                        return Vector3.new(a.X - b.X, a.Y - b.Y, a.Z - b.Z)
+                        return Vector3Library.new(a.X - b.X, a.Y - b.Y, a.Z - b.Z)
                 end
+
                 Vector3_mt.__unm = function(a)
-                        return Vector3.new(-a.X, -a.Y, -a.Z)
+                        return Vector3Library.new(-a.X, -a.Y, -a.Z)
                 end
+
                 Vector3_mt.__mul = function(a, b)
                         if type(a) == "number" then
-                                return Vector3.new(a * b.X, a * b.Y, a * b.Z)
+                                return Vector3Library.new(a * b.X, a * b.Y, a * b.Z)
                         elseif type(b) == "number" then
-                                return Vector3.new(a.X * b, a.Y * b, a.Z * b)
-                        else
-                                error("Vector3 multiplication supports scalar operands only in console mode")
+                                return Vector3Library.new(a.X * b, a.Y * b, a.Z * b)
                         end
+                        error("Vector3 multiplication supports scalar operands only in console mode")
                 end
+
                 Vector3_mt.__div = function(a, b)
-                        return Vector3.new(a.X / b, a.Y / b, a.Z / b)
+                        return Vector3Library.new(a.X / b, a.Y / b, a.Z / b)
                 end
+
                 Vector3_mt.__eq = function(a, b)
                         return math.abs(a.X - b.X) < 1e-6 and math.abs(a.Y - b.Y) < 1e-6 and math.abs(a.Z - b.Z) < 1e-6
                 end
 
-                Vector3 = Vector3 or {}
-                function Vector3.new(x, y, z)
+                Vector3Library = {}
+
+                function Vector3Library.new(x, y, z)
                         return setmetatable({ X = x or 0, Y = y or 0, Z = z or 0 }, Vector3_mt)
                 end
-                Vector3.zero = Vector3.new(0, 0, 0)
 
-                CFrame = CFrame or {}
+                Vector3Library.zero = Vector3Library.new(0, 0, 0)
+
+                return Vector3Library
+        end
+
+        local Vector3Lib = makeVector3Library()
+
+        local function makeCFrameLibrary()
                 local CFrame_mt = { __index = {} }
-                function CFrame.new(x, y, z)
+
+                local function new(x, y, z)
                         if type(x) == "table" then
                                 local v = x
-                                return setmetatable({ Position = Vector3.new(v.X, v.Y, v.Z) }, CFrame_mt)
+                                return setmetatable({ Position = Vector3Lib.new(v.X, v.Y, v.Z) }, CFrame_mt)
                         end
-                        return setmetatable({ Position = Vector3.new(x or 0, y or 0, z or 0) }, CFrame_mt)
-                end
-                setmetatable(CFrame, { __call = function(_, ...) return CFrame.new(...) end })
 
-                Enum = Enum or {}
-                Enum.KeyCode = Enum.KeyCode or { G = "G" }
-                Enum.ZIndexBehavior = Enum.ZIndexBehavior or { Sibling = "Sibling" }
-                Enum.UserInputState = Enum.UserInputState or { Begin = "Begin" }
-                Enum.ContextActionResult = Enum.ContextActionResult or { Pass = "Pass", Sink = "Sink" }
-                Enum.Font = Enum.Font or { GothamBold = "GothamBold", Gotham = "Gotham" }
-                Enum.RaycastFilterType = Enum.RaycastFilterType or { Exclude = "Exclude" }
-
-                Color3 = Color3 or {}
-                function Color3.fromRGB(r, g, b)
-                        return { R = r, G = g, B = b }
+                        return setmetatable({ Position = Vector3Lib.new(x or 0, y or 0, z or 0) }, CFrame_mt)
                 end
 
-                Vector2 = Vector2 or {}
-                function Vector2.new(x, y)
-                        return { X = x, Y = y }
-                end
+                local library = { new = new }
+                setmetatable(library, { __call = function(_, ...) return new(...) end })
 
-                UDim = UDim or {}
-                function UDim.new(scale, offset)
-                        return { Scale = scale, Offset = offset }
-                end
+                return library
+        end
 
-                UDim2 = UDim2 or {}
-                function UDim2.new(xScale, xOffset, yScale, yOffset)
-                        return {
-                                X = UDim.new(xScale, xOffset),
-                                Y = UDim.new(yScale, yOffset),
-                        }
-                end
+        local CFrameLib = makeCFrameLibrary()
+
+        local EnumLib = {
+                KeyCode = { G = "G" },
+                ZIndexBehavior = { Sibling = "Sibling" },
+                UserInputState = { Begin = "Begin" },
+                ContextActionResult = { Pass = "Pass", Sink = "Sink" },
+                Font = { GothamBold = "GothamBold", Gotham = "Gotham" },
+                RaycastFilterType = { Exclude = "Exclude" },
+        }
+
+        local Color3Lib = {}
+        function Color3Lib.fromRGB(r, g, b)
+                return { R = r, G = g, B = b }
+        end
+
+        local Vector2Lib = {}
+        function Vector2Lib.new(x, y)
+                return { X = x or 0, Y = y or 0 }
+        end
+
+        local UDimLib = {}
+        function UDimLib.new(scale, offset)
+                return { Scale = scale or 0, Offset = offset or 0 }
+        end
+
+        local UDim2Lib = {}
+        function UDim2Lib.new(xScale, xOffset, yScale, yOffset)
+                return {
+                        X = UDimLib.new(xScale, xOffset),
+                        Y = UDimLib.new(yScale, yOffset),
+                }
+        end
 
                 local RunService = {
                         _isClient = true,
@@ -221,16 +261,16 @@ if not game then
                         return math.random(minValue, maxValue)
                 end
 
-                Random = Random or {}
-                function Random.new(seed)
+                local RandomLib = {}
+                function RandomLib.new(seed)
                         if seed then
                                 math.randomseed(seed)
                         end
                         return setmetatable({}, Random_mt)
                 end
 
-                OverlapParams = OverlapParams or {}
-                function OverlapParams.new()
+                local OverlapParamsLib = {}
+                function OverlapParamsLib.new()
                         return {
                                 FilterType = nil,
                                 MaxParts = nil,
@@ -259,8 +299,8 @@ if not game then
                         return instance
                 end
 
-                Instance = Instance or {}
-                function Instance.new(className)
+                local InstanceLib = {}
+                function InstanceLib.new(className)
                         return makeInstance(className)
                 end
 
@@ -297,16 +337,16 @@ if not game then
 
                 return {
                         game = gameStub,
-                        Vector3 = Vector3,
-                        CFrame = CFrame,
-                        Enum = Enum,
-                        Color3 = Color3,
-                        Vector2 = Vector2,
-                        UDim = UDim,
-                        UDim2 = UDim2,
-                        Random = Random,
-                        OverlapParams = OverlapParams,
-                        Instance = Instance,
+                        Vector3 = Vector3Lib,
+                        CFrame = CFrameLib,
+                        Enum = EnumLib,
+                        Color3 = Color3Lib,
+                        Vector2 = Vector2Lib,
+                        UDim = UDimLib,
+                        UDim2 = UDim2Lib,
+                        Random = RandomLib,
+                        OverlapParams = OverlapParamsLib,
+                        Instance = InstanceLib,
                         task = taskStub,
                         time = time or os.clock,
                 }
@@ -314,19 +354,33 @@ if not game then
 
         local consoleStub = createConsoleStub()
         game = consoleStub.game
-        Vector3 = consoleStub.Vector3
-        CFrame = consoleStub.CFrame
-        Enum = consoleStub.Enum
-        Color3 = consoleStub.Color3
-        Vector2 = consoleStub.Vector2
-        UDim = consoleStub.UDim
-        UDim2 = consoleStub.UDim2
-        Random = consoleStub.Random
-        OverlapParams = consoleStub.OverlapParams
-        Instance = consoleStub.Instance
-        task = task or consoleStub.task
-        time = time or consoleStub.time
+
+        Vector3_ref = consoleStub.Vector3
+        CFrame_ref = consoleStub.CFrame
+        Enum_ref = consoleStub.Enum
+        Color3_ref = consoleStub.Color3
+        Vector2_ref = consoleStub.Vector2
+        UDim_ref = consoleStub.UDim
+        UDim2_ref = consoleStub.UDim2
+        Random_ref = consoleStub.Random
+        OverlapParams_ref = consoleStub.OverlapParams
+        Instance_ref = consoleStub.Instance
+        task_ref = task_ref or consoleStub.task
+        time_ref = time_ref or consoleStub.time
 end
+
+local Vector3 = Vector3_ref or (_global and rawget(_global, "Vector3"))
+local CFrame = CFrame_ref or (_global and rawget(_global, "CFrame"))
+local Enum = Enum_ref or (_global and rawget(_global, "Enum"))
+local Color3 = Color3_ref or (_global and rawget(_global, "Color3"))
+local Vector2 = Vector2_ref or (_global and rawget(_global, "Vector2"))
+local UDim = UDim_ref or (_global and rawget(_global, "UDim"))
+local UDim2 = UDim2_ref or (_global and rawget(_global, "UDim2"))
+local Random = Random_ref or (_global and rawget(_global, "Random"))
+local OverlapParams = OverlapParams_ref or (_global and rawget(_global, "OverlapParams"))
+local Instance = Instance_ref or (_global and rawget(_global, "Instance"))
+local task = task_ref or (_global and rawget(_global, "task"))
+local time = time_ref or (_global and rawget(_global, "time")) or os.clock
 
 local Players               = game:GetService("Players")
 local RunService            = game:GetService("RunService")

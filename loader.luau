@@ -89,7 +89,9 @@ local function loadImmortal(options: any?)
         local config = resolveConfig(options)
         local moduleUrl = config.moduleUrl or buildModuleUrl(config.branch)
 
+        print(string.format("[ImmortalLoader] Fetching module from %s", moduleUrl))
         local source = fetchSource(moduleUrl)
+        print("[ImmortalLoader] Download complete.")
         local ImmortalModule = loadstring(source, "@Immortal.module")()
         if type(ImmortalModule) ~= "table" then
                 error("[ImmortalLoader] Immortal module did not return a table")
@@ -100,8 +102,10 @@ local function loadImmortal(options: any?)
         end
 
         local immortalInstance = ImmortalModule.new(config.immortalConfig or {})
+        print("[ImmortalLoader] Immortal module instantiated.")
         if config.autoEnable then
                 immortalInstance:setEnabled(true)
+                print("[ImmortalLoader] Immortal enabled (autoEnable=true).")
         end
         return immortalInstance
 end

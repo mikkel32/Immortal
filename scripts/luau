@@ -1,0 +1,144 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+CACHE_DIR="${REPO_ROOT}/.luau-cli"
+BIN_PATH="${CACHE_DIR}/luau"
+VERSION_FILE="${CACHE_DIR}/VERSION"
+DEFAULT_VERSION="0.695"
+
+function detect_platform() {
+        local os
+        os="$(uname -s)"
+        case "${os}" in
+                Linux)
+                        echo "linux"
+                        ;;
+                Darwin)
+                        echo "macos"
+                        ;;
+                MINGW*|MSYS*|CYGWIN*)
+                        echo "windows"
+                        ;;
+                *)
+                        echo "unsupported"
+                        ;;
+        esac
+}
+
+PLATFORM="$(detect_platform)"
+if [[ "${PLATFORM}" == "unsupported" ]]; then
+        echo "error: unsupported platform '${PLATFORM}'." >&2
+        echo "The bundled Luau installer currently supports Linux, macOS, and Windows." >&2
+        exit 1
+fi
+
+if [[ "${PLATFORM}" == "windows" ]]; then
+        BIN_PATH="${CACHE_DIR}/luau.exe"
+fi
+
+function ensure_dependencies() {
+        if ! command -v curl >/dev/null 2>&1; then
+                echo "error: curl is required to download the Luau CLI." >&2
+                exit 1
+        fi
+        if ! command -v unzip >/dev/null 2>&1; then
+                echo "error: unzip is required to extract the Luau CLI archive." >&2
+                exit 1
+        fi
+}
+
+function fetch_version() {
+        local requested
+        requested="${IMMORTAL_LUAU_VERSION:-${DEFAULT_VERSION}}"
+        if [[ -n "${requested}" ]]; then
+                echo "${requested}"
+                return
+        fi
+}
+
+function needs_install() {
+        local version
+        version="$(fetch_version)"
+        if [[ ! -x "${BIN_PATH}" ]]; then
+                return 0
+        fi
+        if [[ ! -f "${VERSION_FILE}" ]]; then
+                return 0
+        fi
+        local current
+        current="$(cat "${VERSION_FILE}")"
+        if [[ "${current}" != "${version}" ]]; then
+                return 0
+        fi
+        return 1
+}
+
+function download_asset() {
+        local version archive url tmpdir tmpfile
+        version="$(fetch_version)"
+        case "${PLATFORM}" in
+                linux)
+                        archive="luau-ubuntu.zip"
+                        ;;
+                macos)
+                        archive="luau-macos.zip"
+                        ;;
+                windows)
+                        archive="luau-windows.zip"
+                        ;;
+        esac
+        url="https://github.com/luau-lang/luau/releases/download/${version}/${archive}"
+        tmpdir="$(mktemp -d)"
+        tmpfile="${tmpdir}/${archive}"
+        echo "Downloading Luau ${version} (${archive})..." >&2
+        curl -fL "${url}" -o "${tmpfile}"
+        mkdir -p "${CACHE_DIR}"
+        unzip -oq "${tmpfile}" -d "${tmpdir}/extracted"
+        case "${PLATFORM}" in
+                linux|macos)
+                        cp "${tmpdir}/extracted/luau" "${BIN_PATH}"
+                        chmod +x "${BIN_PATH}"
+                        ;;
+                windows)
+                        cp "${tmpdir}/extracted/luau.exe" "${BIN_PATH}"
+                        ;;
+        esac
+        echo "$(fetch_version)" > "${VERSION_FILE}"
+        rm -rf "${tmpdir}"
+}
+
+ensure_dependencies
+if needs_install; then
+        download_asset
+fi
+
+if [[ $# -eq 0 ]]; then
+        exec "${BIN_PATH}"
+fi
+
+script_index=-1
+declare -a cli_args=()
+declare -a program_args=()
+
+for arg in "$@"; do
+        if [[ ${script_index} -lt 0 && "${arg}" == -* ]]; then
+                cli_args+=("${arg}")
+        elif [[ ${script_index} -lt 0 ]]; then
+                script_index=${#cli_args[@]}
+                cli_args+=("${arg}")
+        else
+                program_args+=("${arg}")
+        fi
+done
+
+if [[ ${script_index} -lt 0 ]]; then
+        exec "${BIN_PATH}" "$@"
+fi
+
+if [[ ${#program_args[@]} -gt 0 ]]; then
+        exec "${BIN_PATH}" "${cli_args[@]}" -a "${program_args[@]}"
+else
+        exec "${BIN_PATH}" "${cli_args[@]}"
+fi
